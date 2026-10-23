@@ -20,18 +20,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 'latest'
+      - name: Setup Android command line tools
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_HOME/licenses"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          sdkmanager --version
 
       - name: Accept Android SDK licenses
         shell: bash
         run: |
           set +o pipefail
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          yes | sdkmanager --licenses || true
+          mkdir -p "$ANDROID_HOME/licenses"
+          printf '%s\n' \
+            '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
+            'd56f5187479451eabf01fb78af6dfcb131a6481e' \
+            '8933bad161af4178b1185d1a37fbf41ea5269c55' \
+            > "$ANDROID_HOME/licenses/android-sdk-license"
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         shell: bash
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -40,33 +49,28 @@ jobs:
         shell: bash
         run: |
           ARCHIVE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-
           if [ -z "$ARCHIVE" ]; then
             echo "ERROR: Project ZIP not found in repository root."
             ls -la
             exit 1
           fi
-
           unzip -o "$ARCHIVE" -d extracted
 
-      - name: Locate Android project
+      - name: Find Android project
         shell: bash
         run: |
           SETTINGS=$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
-
           if [ -z "$SETTINGS" ]; then
             echo "ERROR: settings.gradle not found in ZIP."
             find extracted -maxdepth 5 -type f
             exit 1
           fi
-
           echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
       - name: Build APK
         shell: bash
         run: |
           cd "$PROJECT_DIR"
-
           if [ -f gradlew ]; then
             chmod +x gradlew
             ./gradlew assembleDebug
@@ -78,6 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: undefined-apk
-          path: |
-            extracted/**/app/build/outputs/apk/debug/*.apk
+          path: extracted/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
