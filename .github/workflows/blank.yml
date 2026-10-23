@@ -1,4 +1,3 @@
-
 name: Build Android APK
 
 on:
@@ -20,20 +19,16 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      
       - name: Accept Android SDK licenses
+        shell: bash
         run: |
-          mkdir -p "$ANDROID_HOME/licenses"
-          printf '%s\n' \
-            '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
-            'd56f5187479451eabf01fb78af6dfcb131a6481e' \
-            '8933bad161af4178b1185d1a37fbf41ea5269c55' \
-            > "$ANDROID_HOME/licenses/android-sdk-license"
+          yes | sdkmanager --licenses || true
 
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-        
+
       - name: Extract project ZIP
+        shell: bash
         run: |
           ARCHIVE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
           if [ -z "$ARCHIVE" ]; then
@@ -42,17 +37,27 @@ jobs:
             exit 1
           fi
           unzip -o "$ARCHIVE" -d extracted
-          find extracted -name settings.gradle -o -name settings.gradle.kts
 
       - name: Build APK
+        shell: bash
         run: |
-          PROJECT=$(dirname "$(find extracted -name settings.gradle -o -name settings.gradle.kts | head -n 1)")
-          test -n "$PROJECT"
+          SETTINGS=$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle not found."
+            find extracted -maxdepth 4 -type f
+            exit 1
+          fi
+          PROJECT=$(dirname "$SETTINGS")
           cd "$PROJECT"
-          gradle assembleDebug
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: undefined-apk
           path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
-          
+          if-no-files-found: error
