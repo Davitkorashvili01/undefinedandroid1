@@ -20,48 +20,76 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 'latest'
+      - name: Download Android SDK tools
+        shell: bash
+        run: |
+          set -e
+          SDK="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK/cmdline-tools" "$RUNNER_TEMP/tools-unpacked"
+
+          curl -fL \
+            https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip \
+            -o "$RUNNER_TEMP/tools.zip"
+
+          unzip -q "$RUNNER_TEMP/tools.zip" -d "$RUNNER_TEMP/tools-unpacked"
+          mkdir -p "$SDK/cmdline-tools/latest"
+          cp -a "$RUNNER_TEMP/tools-unpacked/cmdline-tools/." "$SDK/cmdline-tools/latest/"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses
         shell: bash
         run: |
           set +o pipefail
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$ANDROID_HOME" --licenses
 
       - name: Install Android SDK
         shell: bash
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools"
 
       - name: Extract project ZIP
         shell: bash
         run: |
+          set -e
           ARCHIVE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+
           if [ -z "$ARCHIVE" ]; then
             echo "ERROR: Project ZIP not found in repository root."
             ls -la
             exit 1
           fi
+
           unzip -o "$ARCHIVE" -d extracted
 
       - name: Find Android project
         shell: bash
         run: |
-          SETTINGS=$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
+          SETTINGS=$(find extracted -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            | head -n 1)
+
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle not found in ZIP."
+            echo "ERROR: Android Gradle project not found in ZIP."
             find extracted -maxdepth 5 -type f
             exit 1
           fi
+
           echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
       - name: Build APK
         shell: bash
         run: |
+          set -e
           cd "$PROJECT_DIR"
+
           if [ -f gradlew ]; then
             chmod +x gradlew
             ./gradlew assembleDebug
