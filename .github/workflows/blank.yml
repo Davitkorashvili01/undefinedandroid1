@@ -22,13 +22,10 @@ jobs:
       - name: Accept Android SDK licenses
         shell: bash
         run: |
-          set +e
-          mkdir -p "$ANDROID_HOME/licenses"
-          yes | sdkmanager --licenses >/dev/null 2>&1
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1
-          echo "SDK license step completed"
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-            - name: Install Android SDK
+      - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Extract project ZIP
